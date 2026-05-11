@@ -7,8 +7,12 @@ st.set_page_config(page_title="Kaizen Real Estate Analyst", page_icon="🏢", la
 st.title("🏢 Kaizen AI Analyst")
 st.subheader("Commercial Real Estate & Non-Performing Loan Diligence")
 
-# --- AWS CREDENTIALS (Sourced from Streamlit Secrets) ---
-# When you deploy, you will put these in the 'Advanced Settings > Secrets' box
+# --- 1. GLOBAL KILL SWITCH (Check this first) ---
+if "APP_ENABLED" in st.secrets and st.secrets["APP_ENABLED"].lower() == "false":
+    st.warning("⚠️ This demo is currently offline for maintenance.")
+    st.stop()
+
+# --- AWS CREDENTIALS ---
 if "AWS_ACCESS_KEY_ID" in st.secrets:
     client = boto3.client(
         service_name='bedrock-agent-runtime',
@@ -21,9 +25,9 @@ else:
     st.stop()
 
 # --- AGENT CONFIG ---
-# Replace these with your actual IDs from the AWS Console
 AGENT_ID = "O759JWQHSA" 
-AGENT_ALIAS_ID = "FFNS2C0ID1" 
+AGENT_ALIAS_ID = "2VRSC5SAF2" 
+MAX_CALLS = 10  # Set your usage limit here
 
 # --- SESSION STATE ---
 if "session_id" not in st.session_state:
@@ -32,39 +36,55 @@ if "session_id" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+# Initialize usage counter
+if "usage_counter" not in st.session_state:
+    st.session_state.usage_counter = 0
+
 # --- CHAT INTERFACE ---
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- CHAT LOGIC ---
-if prompt := st.chat_input("Ask about property financials, legal status, or risk..."):
-    # Display user message
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    # Invoke Bedrock Agent
-    with st.chat_message("assistant"):
-        response_placeholder = st.empty()
-        full_response = ""
+# --- 2. CHAT LOGIC (With Usage Guard) ---
+# Only show the chat input if they haven't hit the limit
+if st.session_state.usage_counter < MAX_CALLS:
+    if prompt := st.chat_input("Ask about property financials, legal status, or risk..."):
+        # Increment counter
+        st.session_state.usage_counter += 1
         
-        try:
-            response = client.invoke_agent(
-                agentId=AGENT_ID,
-                agentAliasId=AGENT_ALIAS_ID,
-                sessionId=st.session_state.session_id,
-                inputText=prompt
-            )
+        # Display user message
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # Invoke Bedrock Agent
+        with st.chat_message("assistant"):
+            response_placeholder = st.empty()
+            full_response = ""
             
-            for event in response.get("completion"):
-                if "chunk" in event:
-                    chunk = event["chunk"]["bytes"].decode("utf-8")
-                    full_response += chunk
-                    response_placeholder.markdown(full_response + "▌")
-            
-            response_placeholder.markdown(full_response)
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
-            
-        except Exception as e:
-            st.error(f"Error calling AI Analyst: {str(e)}")
+            try:
+                response = client.invoke_agent(
+                    agentId=AGENT_ID,
+                    agentAliasId=AGENT_ALIAS_ID,
+                    sessionId=st.session_state.session_id,
+                    inputText=prompt
+                )
+                
+                for event in response.get("completion"):
+                    if "chunk" in event:
+                        chunk = event["chunk"]["bytes"].decode("utf-8")
+                        full_response += chunk
+                        response_placeholder.markdown(full_response + "▌")
+                
+                response_placeholder.markdown(full_response)
+                st.session_state.messages.append({"role": "assistant", "content": full_response})
+                
+            except Exception as e:
+                st.error(f"Error calling AI Analyst: {str(e)}")
+    
+    # Display a small footer showing usage
+    st.caption(f"Questions used: {st.session_state.usage_counter} / {MAX_CALLS}")
+
+else:
+    st.error(f"🛑 Usage limit of {MAX_CALLS} messages reached for this session.")
+    st.info("To protect against excessive costs, this public demo is capped. Please refresh to start over.")
