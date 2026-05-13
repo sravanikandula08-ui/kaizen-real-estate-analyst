@@ -26,7 +26,7 @@ else:
 
 # --- AGENT CONFIG ---
 AGENT_ID = "O759JWQHSA" 
-AGENT_ALIAS_ID = "X1KNPTRYKU" 
+AGENT_ALIAS_ID = "WWXIUOCFBJ" 
 MAX_CALLS = 10  # Set your usage limit here
 
 # --- SESSION STATE ---
